@@ -510,8 +510,8 @@
             // FRICTION
             if (ball.vx !== 0) ball.vx *= 0.96;
             
-            // BALL ROLLS INTO HOLE
-            if (ball.y >= 294 && Math.abs(ball.x - (holeX + 8)) < 20) {
+            // BALL ROLLS INTO HOLE (y >= 294 catches ball at ground level before bounce snap)
+            if (ball.y >= 294 && Math.abs(ball.x - (holeX + 8)) < 22) {
                 ball.vx = 0;
                 ball.vy = 0;
                 ball.active = false;
