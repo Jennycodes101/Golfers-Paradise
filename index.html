@@ -104,6 +104,14 @@
         // RESULT STUFF
         let girlVisible = false;
         let girlKissFrame = 0;
+        const victoryMessages = [
+            'YOU THE MAN!',
+            'GOLF DADDY!',
+            'HOLE IN ONE!',
+            'LEGEND STATUS!',
+            'TOO SMOOTH!'
+        ];
+        let currentVictoryMessage = victoryMessages[0];
         let hotDogVisible = false;
         let hotDog = { x: 0, y: 0, vx: 0, vy: 0 };
         let stars = [];
@@ -506,11 +514,12 @@
             const dx = ball.x - (holeX + 8);
             const dy = ball.y - (holeY + 12);
             
-            if (Math.abs(dx) < 32 && Math.abs(dy) < 20 && Math.abs(ball.vx) < 3.5) {
+            if (Math.abs(dx) < 80 && Math.abs(dy) < 50 && Math.abs(ball.vx) < 8) {
                 // HOLE IN ONE!
                 gameState = 'win';
                 girlVisible = true;
                 girlKissFrame = 0;
+                currentVictoryMessage = victoryMessages[Math.floor(Math.random() * victoryMessages.length)];
                 holeInOneSound();
                 createDust(ball.x, ball.y);
                 ball.active = false;
@@ -597,9 +606,7 @@
             
             if (gameState === 'win') {
                 ctx.fillStyle = '#ff0';
-                ctx.fillText('HOLE IN ONE!', W / 2, 80);
-                ctx.fillStyle = '#fff';
-                ctx.fillText('SHE LOVES YOU!', W / 2, 110);
+                ctx.fillText(currentVictoryMessage, W / 2, 95);
             }
             
             if (gameState === 'lose') {
