@@ -506,7 +506,7 @@
             const dx = ball.x - (holeX + 8);
             const dy = ball.y - (holeY + 12);
             
-            if (Math.abs(dx) < 24 && Math.abs(dy) < 14 && Math.abs(ball.vx) < 2) {
+            if (Math.abs(dx) < 32 && Math.abs(dy) < 20 && Math.abs(ball.vx) < 3.5) {
                 // HOLE IN ONE!
                 gameState = 'win';
                 girlVisible = true;
@@ -520,8 +520,8 @@
                 hotDogVisible = true;
                 hotDog.x = holeX + 80;
                 hotDog.y = 90;
-                hotDog.vx = -7.5;
-                hotDog.vy = 6;
+                hotDog.vx = -4.5;
+                hotDog.vy = 3.5;
                 hotDogHitSound();
             }
         }
