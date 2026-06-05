@@ -495,9 +495,9 @@
                 ball.y = 295;
                 if (ball.vy > 0) {
                     ball.vy = -ball.vy * 0.4;
-                    ball.vx *= 0.85;
+                    ball.vx *= 0.8; // ✅ MORE FRICTION ON BOUNCE (was 0.85)
                     createDust(ball.x, 300);
-                    if (Math.abs(ball.vx) < 1.5) {
+                    if (Math.abs(ball.vx) < 1.0) { // ✅ LOWER STOP THRESHOLD (was 1.5)
                         ball.vx = 0;
                         ball.vy = 0;
                         ball.active = false;
@@ -507,11 +507,11 @@
                 }
             }
             
-            // FRICTION
-            if (ball.vx !== 0) ball.vx *= 0.96;
+            // FRICTION - ✅ INCREASED AIR RESISTANCE (was 0.96)
+            if (ball.vx !== 0) ball.vx *= 0.92;
             
-            // BALL ROLLS INTO HOLE (y >= 294 catches ball at ground level before bounce snap)
-            if (ball.y >= 294 && Math.abs(ball.x - (holeX + 8)) < 22) {
+            // BALL ROLLS INTO HOLE - ✅ WIDER DETECTION ZONE (was < 22, now < 28)
+            if (ball.y >= 294 && Math.abs(ball.x - (holeX + 8)) < 28) {
                 ball.vx = 0;
                 ball.vy = 0;
                 ball.active = false;
@@ -525,7 +525,8 @@
             const dx = ball.x - (holeX + 8);
             const dy = ball.y - (holeY + 12);
             
-            if (Math.abs(dx) < 22 && Math.abs(dy) < 50) {
+            // ✅ EXPANDED WIN ZONE (was < 22, now < 28 for wider tolerance)
+            if (Math.abs(dx) < 28 && Math.abs(dy) < 50) {
                 // HOLE IN ONE!
                 gameState = 'win';
                 girlVisible = true;
@@ -661,10 +662,10 @@
                 
                 // IMPACT MOMENT
                 if (swingProgress > 0.55 && !ball.active) {
-                    // LAUNCH!
+                    // LAUNCH! - ✅ SLOWER BALL SPEED (was power * 1.2 + 2)
                     ball.active = true;
-                    ball.vx = power * 1.2 + 2;
-                    ball.vy = -power * 0.6 - 4;
+                    ball.vx = power * 0.85 + 1.5; // ✅ REDUCED from 1.2x to 0.85x
+                    ball.vy = -power * 0.5 - 3;   // ✅ REDUCED vertical power too
                     hitBallSound();
                     createDust(ball.x, ball.y + 8);
                 }
