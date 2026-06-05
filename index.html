@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Golfers Paradise</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        
+        body {
+            margin: 0;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            image-rendering: pixelated;
+        }
+        
+        canvas {
+            border: 8px solid #0f0;
+            box-shadow: 0 0 30px #0f0,
+                        0 0 60px #00f;
+            image-rendering: pixelated;
+        }
+        
+        .title {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ff0;
+            font-family: 'Press Start 2P', system-ui;
+            font-size: 28px;
+            text-shadow: 
+                4px 4px 0 #f00,
+                -2px -2px 0 #00f;
+            letter-spacing: 4px;
+            z-index: 10;
+            pointer-events: none;
+        }
+        
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            font-family: 'Press Start 2P', system-ui;
+            font-size: 14px;
+            text-align: center;
+            text-shadow: 2px 2px 0 #000;
+            z-index: 10;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="title">GOLFERS PARADISE</div>
+    <canvas id="game" width="640" height="400"></canvas>
+    <div class="instructions" id="instructions">HOLD &amp; PULL BACK → RELEASE TO SWING!<br>8-BIT GOLF AWAITS!</div>
+
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+        const W = 640;
+        const H = 400;
+        
+        // 8-BIT COLORS
+        const PALETTE = {
+            sky: '#4a9cff',
+            grass: '#00c800',
+            dirt: '#8b5a2b',
+            hole: '#222',
+            flag: '#ff0000',
+            golferShirt: '#ff0000',
+            golferSkin: '#f5c78a',
+            golferHat: '#00aaff',
+            ball: '#fff',
+            girlDress: '#ff88ff',
+            girlSkin: '#f5c78a',
+            hotdog: '#ffaa44'
+        };
+        
+        // GAME VARIABLES
+        let gameState = 'ready'; // ready, swinging, flying, landed, win, lose
+        let golferX = 120;
+        let golferY = 280;
+        let clubAngle = Math.PI * 0.6; // ready position
+        let backSwingAmount = 0;
+        
+        let ball = { x: golferX + 45, y: golferY - 8, vx: 0, vy: 0, radius: 6, active: false };
+        
+        let holeX = 510;
+        let holeY = 295;
+        
+        let mouseDown = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        
+        let swingProgress = 0;
+        let power = 0;
+        
+        // RESULT STUFF
+        let girlVisible = false;
+        let girlKissFrame = 0;
+        let hotDogVisible = false;
+        let hotDog = { x: 0, y: 0, vx: 0, vy: 0 };
+        let stars = [];
+        
+        // PARTICLES
+        let particles = [];
+        
+        // AUDIO CONTEXT (8-BIT CHIptune!)
+        let audioCtx;
+        let musicInterval = null;
+        let melodyIndex = 0;
+        
+        // 8-BIT MELODY (square wave chiptune loop)
+        const melody = [
+            {f: 262, d: 160}, // C4
+            {f: 330, d: 160}, // E4
+            {f: 392, d: 320}, // G4
+            {f: 330, d: 160},
+            {f: 392, d: 160},
+            {f: 523, d: 320}, // C5
+            {f: 392, d: 160},
+            {f: 330, d: 160},
+            {f: 262, d: 480}, // long C4
+            {f: 0, d: 160}    // rest
+        ];
+        
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+        
+        function playNote(freq, duration, type = 'square', volume = 0.25) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            osc.type = type;
+            
+            gain.gain.value = volume;
+            gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + duration / 1000);
+            
+            osc.connect(gain).connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration / 1000 + 0.1);
+        }
+        
+        function startMusic() {
+            initAudio();
+            if (musicInterval) clearInterval(musicInterval);
+            
+            melodyIndex = 0;
+            musicInterval = setInterval(() => {
+                if (melodyIndex >= melody.length) melodyIndex = 0;
+                const note = melody[melodyIndex];
+                if (note.f > 0) {
+                    playNote(note.f, note.d, 'square', 0.18);
+                }
+                melodyIndex++;
+            }, 140);
+        }
+        
+        function stopMusic() {
+            if (musicInterval) {
+                clearInterval(musicInterval);
+                musicInterval = null;
+            }
+        }
+        
+        // SOUND EFFECTS
+        function swingSound() {
+            initAudio();
+            playNote(180, 80, 'sawtooth', 0.4);
+            setTimeout(() => playNote(120, 120, 'sawtooth', 0.3), 60);
+        }
+        
+        function hitBallSound() {
+            initAudio();
+            playNote(800, 40, 'square', 0.6);
+            setTimeout(() => playNote(600, 30, 'square', 0.4), 30);
+        }
+        
+        function holeInOneSound() {
+            initAudio();
+            playNote(523, 100, 'square', 0.5);
+            setTimeout(() => playNote(659, 100, 'square', 0.5), 100);
+            setTimeout(() => playNote(784, 300, 'square', 0.5), 220);
+        }
+        
+        function hotDogHitSound() {
+            initAudio();
+            playNote(150, 80, 'sawtooth', 0.7);
+            setTimeout(() => playNote(80, 200, 'sawtooth', 0.5), 80);
+        }
+        
+        // DRAW BACKGROUND (pure 8-bit)
+        function drawBackground() {
+            // SKY
+            ctx.fillStyle = PALETTE.sky;
+            ctx.fillRect(0, 0, W, 300);
+            
+            // SUN (blocky 8-bit sun)
+            ctx.fillStyle = '#ffeb3b';
+            ctx.fillRect(480, 40, 36, 36);
+            ctx.fillStyle = '#ffeb3b';
+            ctx.fillRect(490, 30, 16, 8);   // rays
+            ctx.fillRect(520, 50, 8, 16);
+            ctx.fillRect(460, 50, 8, 16);
+            ctx.fillRect(490, 70, 16, 8);
+            
+            // GRASS
+            ctx.fillStyle = PALETTE.grass;
+            ctx.fillRect(0, 290, W, H - 290);
+            
+            // DIRT STRIP (fairway)
+            ctx.fillStyle = PALETTE.dirt;
+            ctx.fillRect(80, 300, W - 100, 20);
+            
+            // HOLE
+            ctx.fillStyle = PALETTE.hole;
+            ctx.ellipse(holeX + 8, holeY + 18, 18, 8, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // FLAG POLE
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.moveTo(holeX + 20, holeY + 5);
+            ctx.lineTo(holeX + 20, holeY - 45);
+            ctx.stroke();
+            
+            // FLAG
+            ctx.fillStyle = PALETTE.flag;
+            ctx.beginPath();
+            ctx.moveTo(holeX + 20, holeY - 45);
+            ctx.lineTo(holeX + 48, holeY - 35);
+            ctx.lineTo(holeX + 20, holeY - 25);
+            ctx.fill();
+            
+            // TEE BOX LINES (8-bit detail)
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(golferX - 20, golferY + 38);
+            ctx.lineTo(golferX + 60, golferY + 38);
+            ctx.stroke();
+        }
+        
+        // DRAW GOLFER (8-bit character)
+        function drawGolfer() {
+            const handX = golferX + 18;
+            const handY = golferY - 22;
+            
+            // LEGS
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 10;
+            ctx.beginPath();
+            ctx.moveTo(golferX + 4, golferY + 18);
+            ctx.lineTo(golferX - 6, golferY + 42);
+            ctx.moveTo(golferX + 12, golferY + 18);
+            ctx.lineTo(golferX + 22, golferY + 42);
+            ctx.stroke();
+            
+            // SHOES
+            ctx.fillStyle = '#222';
+            ctx.fillRect(golferX - 12, golferY + 40, 14, 6);
+            ctx.fillRect(golferX + 16, golferY + 40, 14, 6);
+            
+            // BODY
+            ctx.fillStyle = PALETTE.golferShirt;
+            ctx.fillRect(golferX - 12, golferY - 28, 28, 38);
+            
+            // COLLAR
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(golferX - 8, golferY - 26, 18, 6);
+            
+            // HEAD
+            ctx.fillStyle = PALETTE.golferSkin;
+            ctx.beginPath();
+            ctx.arc(golferX + 8, golferY - 38, 14, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // HAT
+            ctx.fillStyle = PALETTE.golferHat;
+            ctx.fillRect(golferX - 10, golferY - 54, 32, 10);
+            ctx.fillRect(golferX + 4, golferY - 62, 14, 10); // brim
+            
+            // EYE
+            ctx.fillStyle = '#222';
+            ctx.fillRect(golferX + 14, golferY - 42, 6, 6);
+            
+            // ARM
+            let armAngle = clubAngle;
+            const armEndX = handX + Math.cos(armAngle) * 22;
+            const armEndY = handY + Math.sin(armAngle) * 22;
+            
+            ctx.strokeStyle = PALETTE.golferSkin;
+            ctx.lineWidth = 9;
+            ctx.beginPath();
+            ctx.moveTo(handX, handY);
+            ctx.lineTo(armEndX, armEndY);
+            ctx.stroke();
+            
+            // CLUB
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 5;
+            const clubEndX = armEndX + Math.cos(armAngle) * 38;
+            const clubEndY = armEndY + Math.sin(armAngle) * 38;
+            ctx.beginPath();
+            ctx.moveTo(armEndX, armEndY);
+            ctx.lineTo(clubEndX, clubEndY);
+            ctx.stroke();
+            
+            // CLUB HEAD
+            ctx.lineWidth = 12;
+            ctx.beginPath();
+            ctx.moveTo(clubEndX, clubEndY);
+            ctx.lineTo(clubEndX + Math.cos(armAngle + Math.PI / 2) * 14, clubEndY + Math.sin(armAngle + Math.PI / 2) * 14);
+            ctx.stroke();
+        }
+        
+        // DRAW BALL
+        function drawBall() {
+            if (!ball.active) return;
+            ctx.fillStyle = PALETTE.ball;
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = '#fff';
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            
+            // 8-bit dimple
+            ctx.fillStyle = '#ccc';
+            ctx.fillRect(ball.x - 2, ball.y - 2, 4, 4);
+        }
+        
+        // DRAW GIRL (pops up and blows kiss)
+        function drawGirl() {
+            if (!girlVisible) return;
+            
+            const gx = holeX + 65;
+            const gy = holeY - 55 + Math.sin(girlKissFrame * 0.2) * 3;
+            
+            // LEGS
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.moveTo(gx + 4, gy + 38);
+            ctx.lineTo(gx - 4, gy + 52);
+            ctx.moveTo(gx + 12, gy + 38);
+            ctx.lineTo(gx + 18, gy + 52);
+            ctx.stroke();
+            
+            // DRESS
+            ctx.fillStyle = PALETTE.girlDress;
+            ctx.beginPath();
+            ctx.moveTo(gx - 14, gy + 18);
+            ctx.lineTo(gx + 26, gy + 18);
+            ctx.lineTo(gx + 8, gy + 48);
+            ctx.fill();
+            
+            // HEAD
+            ctx.fillStyle = PALETTE.girlSkin;
+            ctx.beginPath();
+            ctx.arc(gx + 8, gy - 4, 14, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // HAIR
+            ctx.fillStyle = '#ff88cc';
+            ctx.fillRect(gx - 10, gy - 22, 28, 12);
+            
+            // EYES
+            ctx.fillStyle = '#222';
+            ctx.fillRect(gx + 2, gy - 10, 5, 5);
+            ctx.fillRect(gx + 18, gy - 10, 5, 5);
+            
+            // MOUTH (kiss!)
+            ctx.fillStyle = '#ff4488';
+            if (girlKissFrame % 8 < 4) {
+                ctx.beginPath();
+                ctx.arc(gx + 14, gy + 4, 4, 0, Math.PI * 2);
+                ctx.fill();
+            } else {
+                // puckered lips
+                ctx.fillRect(gx + 11, gy + 2, 8, 4);
+            }
+            
+            // KISS HEART PARTICLE
+            if (girlKissFrame % 12 < 6) {
+                ctx.fillStyle = '#ff4488';
+                ctx.save();
+                ctx.translate(gx + 32, gy - 2);
+                ctx.scale(1.2, 1);
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.bezierCurveTo(-6, -8, -12, 0, 0, 8);
+                ctx.bezierCurveTo(12, 0, 6, -8, 0, 0);
+                ctx.fill();
+                ctx.restore();
+            }
+            
+            girlKissFrame++;
+        }
+        
+        // DRAW HOT DOG (flying revenge!)
+        function drawHotDog() {
+            if (!hotDogVisible) return;
+            
+            ctx.save();
+            ctx.translate(hotDog.x, hotDog.y);
+            const rot = Math.atan2(hotDog.vy, hotDog.vx) + Math.PI / 2;
+            ctx.rotate(rot);
+            
+            // SAUSAGE
+            ctx.fillStyle = PALETTE.hotdog;
+            ctx.fillRect(-18, -6, 36, 12);
+            
+            // GRILL MARKS
+            ctx.strokeStyle = '#c55';
+            ctx.lineWidth = 3;
+            for (let i = -2; i < 3; i++) {
+                ctx.beginPath();
+                ctx.moveTo(-14 + i * 8, -5);
+                ctx.lineTo(-14 + i * 8, 5);
+                ctx.stroke();
+            }
+            
+            // MUSTARD
+            ctx.strokeStyle = '#ffeb3b';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-16, 0);
+            ctx.quadraticCurveTo(-6, -4, 4, 3);
+            ctx.quadraticCurveTo(12, -2, 16, 0);
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+        
+        // DRAW STARS (dizzy effect)
+        function drawStars() {
+            ctx.fillStyle = '#ffeb3b';
+            for (let star of stars) {
+                ctx.save();
+                ctx.translate(star.x, star.y);
+                ctx.rotate(star.angle);
+                ctx.fillRect(-3, -10, 6, 20);
+                ctx.fillRect(-10, -3, 20, 6);
+                ctx.restore();
+            }
+        }
+        
+        // CREATE DUST PARTICLES
+        function createDust(x, y) {
+            for (let i = 0; i < 12; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: Math.random() * 4 - 2,
+                    vy: Math.random() * -2 - 1,
+                    life: 30 + Math.random() * 20,
+                    color: PALETTE.grass
+                });
+            }
+        }
+        
+        // UPDATE BALL PHYSICS
+        function updateBall() {
+            if (!ball.active) return;
+            
+            ball.vy += 0.38; // gravity (8-bit chunky)
+            ball.x += ball.vx;
+            ball.y += ball.vy;
+            
+            // GROUND BOUNCE
+            if (ball.y > 295) {
+                ball.y = 295;
+                if (ball.vy > 0) {
+                    ball.vy = -ball.vy * 0.4;
+                    ball.vx *= 0.85;
+                    createDust(ball.x, 300);
+                    if (Math.abs(ball.vx) < 1.5) {
+                        ball.vx = 0;
+                        ball.vy = 0;
+                        ball.active = false;
+                        checkWinOrLose();
+                    }
+                }
+            }
+            
+            // FRICTION
+            if (ball.vx !== 0) ball.vx *= 0.98;
+        }
+        
+        // CHECK IF BALL IN HOLE
+        function checkWinOrLose() {
+            const dx = ball.x - (holeX + 8);
+            const dy = ball.y - (holeY + 12);
+            
+            if (Math.abs(dx) < 24 && Math.abs(dy) < 14 && Math.abs(ball.vx) < 2) {
+                // HOLE IN ONE!
+                gameState = 'win';
+                girlVisible = true;
+                girlKissFrame = 0;
+                holeInOneSound();
+                createDust(ball.x, ball.y);
+                ball.active = false;
+            } else {
+                // MISS - HOT DOG REVENGE!
+                gameState = 'lose';
+                hotDogVisible = true;
+                hotDog.x = holeX + 80;
+                hotDog.y = 90;
+                hotDog.vx = -7.5;
+                hotDog.vy = 6;
+                hotDogHitSound();
+            }
+        }
+        
+        // UPDATE HOT DOG
+        function updateHotDog() {
+            if (!hotDogVisible) return;
+            
+            hotDog.x += hotDog.vx;
+            hotDog.y += hotDog.vy;
+            hotDog.vy += 0.4;
+            
+            // HIT GOLFER?
+            if (hotDog.x < golferX + 40 && hotDog.y > golferY - 30 && hotDog.y < golferY + 30) {
+                hotDogVisible = false;
+                // dizzy stars
+                for (let i = 0; i < 8; i++) {
+                    stars.push({
+                        x: golferX + 12 + Math.random() * 24,
+                        y: golferY - 48,
+                        angle: Math.random() * Math.PI * 2,
+                        speed: 0.1 + Math.random() * 0.1
+                    });
+                }
+                setTimeout(() => { stars = []; }, 1200);
+            }
+        }
+        
+        // UPDATE PARTICLES
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.2;
+                p.life--;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+        }
+        
+        // MAIN DRAW
+        function draw() {
+            ctx.clearRect(0, 0, W, H);
+            drawBackground();
+            
+            // GOLFER
+            drawGolfer();
+            
+            // BALL
+            drawBall();
+            
+            // GIRL
+            drawGirl();
+            
+            // HOT DOG
+            drawHotDog();
+            
+            // STARS
+            drawStars();
+            
+            // PARTICLES
+            ctx.shadowBlur = 0;
+            for (let p of particles) {
+                ctx.globalAlpha = p.life / 40;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 4, 4);
+            }
+            ctx.globalAlpha = 1;
+            
+            // STATE TEXT
+            ctx.textAlign = 'center';
+            ctx.font = '18px "Press Start 2P"';
+            
+            if (gameState === 'win') {
+                ctx.fillStyle = '#ff0';
+                ctx.fillText('HOLE IN ONE!', W / 2, 80);
+                ctx.fillStyle = '#fff';
+                ctx.fillText('SHE LOVES YOU!', W / 2, 110);
+            }
+            
+            if (gameState === 'lose') {
+                ctx.fillStyle = '#f00';
+                ctx.fillText('HOT DOGGED!', W / 2, 80);
+                ctx.fillStyle = '#fff';
+                ctx.fillText('BETTER LUCK NEXT TIME', W / 2, 110);
+            }
+            
+            // READY POWER INDICATOR
+            if (gameState === 'ready' && mouseDown) {
+                ctx.fillStyle = '#ff0';
+                const barWidth = Math.min(160, backSwingAmount * 1.6);
+                ctx.fillRect(golferX - 10, golferY - 85, barWidth, 12);
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 4;
+                ctx.strokeRect(golferX - 12, golferY - 87, 164, 16);
+                ctx.fillStyle = '#fff';
+                ctx.font = '12px "Press Start 2P"';
+                ctx.fillText('POWER', golferX + 70, golferY - 95);
+            }
+            
+            // INSTRUCTIONS (only on ready)
+            if (gameState === 'ready' && !mouseDown) {
+                ctx.fillStyle = '#fff';
+                ctx.font = '14px "Press Start 2P"';
+                ctx.fillText('HOLD MOUSE & PULL LEFT!', W / 2, H - 30);
+            }
+        }
+        
+        // GAME LOOP
+        function loop() {
+            updateBall();
+            updateHotDog();
+            updateParticles();
+            
+            // SWING ANIMATION
+            if (gameState === 'swinging') {
+                swingProgress += 0.09;
+                clubAngle = (Math.PI * 0.6) + (swingProgress * 3.8); // big swing arc
+                
+                // IMPACT MOMENT
+                if (swingProgress > 0.55 && !ball.active) {
+                    // LAUNCH!
+                    ball.active = true;
+                    ball.vx = power * 2.8 + 4;
+                    ball.vy = -power * 1.1 - 9;
+                    hitBallSound();
+                    createDust(ball.x, ball.y + 8);
+                }
+                
+                if (swingProgress > 1.6) {
+                    gameState = 'flying';
+                    swingProgress = 0;
+                    clubAngle = Math.PI * 0.6; // reset club
+                }
+            }
+            
+            draw();
+            requestAnimationFrame(loop);
+        }
+        
+        // INPUT
+        function handleMouseDown(e) {
+            if (gameState === 'win' || gameState === 'lose') {
+                resetGame();
+                return;
+            }
+            
+            initAudio();
+            if (!musicInterval) startMusic();
+            
+            if (gameState === 'ready') {
+                const rect = canvas.getBoundingClientRect();
+                mouseDown = true;
+                dragStartX = e.clientX - rect.left;
+                dragStartY = e.clientY - rect.top;
+            }
+        }
+        
+        function handleMouseMove(e) {
+            if (!mouseDown || gameState !== 'ready') return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            
+            // Pull back = power (only leftward movement counts)
+            backSwingAmount = Math.max(0, dragStartX - mx);
+            power = Math.min(100, backSwingAmount * 0.9);
+            
+            // Club angle follows pull (8-bit backswing)
+            clubAngle = Math.PI * 0.6 + (backSwingAmount / 110) * 2.4;
+        }
+        
+        function handleMouseUp(e) {
+            if (!mouseDown) return;
+            mouseDown = false;
+            
+            if (gameState === 'ready' && power > 15) {
+                gameState = 'swinging';
+                swingProgress = 0;
+                swingSound();
+            } else {
+                // too weak - reset club
+                clubAngle = Math.PI * 0.6;
+                backSwingAmount = 0;
+                power = 0;
+            }
+        }
+        
+        function resetGame() {
+            gameState = 'ready';
+            ball.x = golferX + 45;
+            ball.y = golferY - 8;
+            ball.vx = 0;
+            ball.vy = 0;
+            ball.active = false;
+            
+            girlVisible = false;
+            hotDogVisible = false;
+            stars = [];
+            particles = [];
+            
+            clubAngle = Math.PI * 0.6;
+            backSwingAmount = 0;
+            power = 0;
+            swingProgress = 0;
+        }
+        
+        // START EVERYTHING
+        function start() {
+            canvas.addEventListener('mousedown', handleMouseDown);
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('mouseup', handleMouseUp);
+            canvas.addEventListener('mouseleave', () => { mouseDown = false; });
+            
+            // Touch support for mobile
+            canvas.addEventListener('touchstart', e => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                const fakeEvent = { clientX: touch.clientX, clientY: touch.clientY };
+                handleMouseDown(fakeEvent);
+            });
+            
+            canvas.addEventListener('touchmove', e => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                const fakeEvent = { clientX: touch.clientX, clientY: touch.clientY };
+                handleMouseMove(fakeEvent);
+            });
+            
+            canvas.addEventListener('touchend', e => {
+                e.preventDefault();
+                handleMouseUp({});
+            });
+            
+            resetGame();
+            loop();
+            
+            console.log('%c🎮 Golfers Paradise loaded! Pure 8-bit fun!', 'color:#0f0; font-family:monospace');
+        }
+        
+        window.onload = start;
+    </script>
+</body>
+</html>
