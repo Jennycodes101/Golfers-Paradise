@@ -310,28 +310,29 @@
             const armEndX = handX + Math.cos(armAngle) * 22;
             const armEndY = handY + Math.sin(armAngle) * 22;
             
+            // CLUB SHAFT (drawn before arm so hand overlaps the grip)
+            const clubEndX = handX + Math.cos(armAngle) * 62;
+            const clubEndY = handY + Math.sin(armAngle) * 62;
+            ctx.strokeStyle = '#bbb';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(handX, handY);
+            ctx.lineTo(clubEndX, clubEndY);
+            ctx.stroke();
+            
+            // CLUB HEAD (gold)
+            ctx.strokeStyle = '#ffd700';
+            ctx.lineWidth = 10;
+            ctx.beginPath();
+            ctx.moveTo(clubEndX, clubEndY);
+            ctx.lineTo(clubEndX + Math.cos(armAngle + Math.PI / 2) * 14, clubEndY + Math.sin(armAngle + Math.PI / 2) * 14);
+            ctx.stroke();
+            
             ctx.strokeStyle = PALETTE.golferSkin;
             ctx.lineWidth = 9;
             ctx.beginPath();
             ctx.moveTo(handX, handY);
             ctx.lineTo(armEndX, armEndY);
-            ctx.stroke();
-            
-            // CLUB
-            ctx.strokeStyle = '#222';
-            ctx.lineWidth = 5;
-            const clubEndX = armEndX + Math.cos(armAngle) * 38;
-            const clubEndY = armEndY + Math.sin(armAngle) * 38;
-            ctx.beginPath();
-            ctx.moveTo(armEndX, armEndY);
-            ctx.lineTo(clubEndX, clubEndY);
-            ctx.stroke();
-            
-            // CLUB HEAD
-            ctx.lineWidth = 12;
-            ctx.beginPath();
-            ctx.moveTo(clubEndX, clubEndY);
-            ctx.lineTo(clubEndX + Math.cos(armAngle + Math.PI / 2) * 14, clubEndY + Math.sin(armAngle + Math.PI / 2) * 14);
             ctx.stroke();
         }
         
@@ -501,12 +502,22 @@
                         ball.vy = 0;
                         ball.active = false;
                         checkWinOrLose();
+                        return;
                     }
                 }
             }
             
             // FRICTION
-            if (ball.vx !== 0) ball.vx *= 0.98;
+            if (ball.vx !== 0) ball.vx *= 0.96;
+            
+            // BALL ROLLS INTO HOLE
+            if (ball.y >= 294 && Math.abs(ball.x - (holeX + 8)) < 20) {
+                ball.vx = 0;
+                ball.vy = 0;
+                ball.active = false;
+                checkWinOrLose();
+                return;
+            }
         }
         
         // CHECK IF BALL IN HOLE
@@ -514,7 +525,7 @@
             const dx = ball.x - (holeX + 8);
             const dy = ball.y - (holeY + 12);
             
-            if (Math.abs(dx) < 80 && Math.abs(dy) < 50 && Math.abs(ball.vx) < 8) {
+            if (Math.abs(dx) < 22 && Math.abs(dy) < 50) {
                 // HOLE IN ONE!
                 gameState = 'win';
                 girlVisible = true;
@@ -652,8 +663,8 @@
                 if (swingProgress > 0.55 && !ball.active) {
                     // LAUNCH!
                     ball.active = true;
-                    ball.vx = power * 2.8 + 4;
-                    ball.vy = -power * 1.1 - 9;
+                    ball.vx = power * 1.2 + 2;
+                    ball.vy = -power * 0.6 - 4;
                     hitBallSound();
                     createDust(ball.x, ball.y + 8);
                 }
